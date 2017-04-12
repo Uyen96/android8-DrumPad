@@ -8,8 +8,18 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.widget.ImageView;
 
+import com.example.honguyen.myapplication.touches.Touch;
+import com.example.honguyen.myapplication.touches.TouchManager;
+
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
+
+import static android.view.MotionEvent.ACTION_DOWN;
+import static android.view.MotionEvent.ACTION_MOVE;
+import static android.view.MotionEvent.ACTION_POINTER_DOWN;
+import static android.view.MotionEvent.ACTION_POINTER_UP;
+import static android.view.MotionEvent.ACTION_UP;
 
 public class MainActivity extends AppCompatActivity {
     private static final String TAG = "MainActivity";
@@ -54,89 +64,79 @@ public class MainActivity extends AppCompatActivity {
         ivKeys.add((ImageView) findViewById(R.id.iv_key_34));
 
         pressedKeyInfoList = new ArrayList<>();
+        SoundManager.loadSoundIntoList(this);
     }
 
     @Override
     public boolean onTouchEvent(MotionEvent event) {
-        // Log.d(TAG, String.format("onTouchEvent : %s, %s", event.getX(), event.getY()));
-
-
-        int pointerindex = MotionEventCompat.getActionIndex(event);
-        int pointerId = event.getPointerId(pointerindex);
-
-        float pointerX = event.getX(pointerindex);
-        float pointerY = event.getY(pointerindex);
-        int pointerAction = event.getActionMasked();
-
-        if(pointerAction == MotionEvent.ACTION_MOVE ){
-            for(int i = 0; i < pressedKeyInfoList.size(); i++){
-                PressdeKeyInfo  pressdeKeyInfo = pressedKeyInfoList.get(i);
-                if(pressdeKeyInfo.getPointerId() == pointerId &&
-                        !isInside(pointerX, pointerY, pressdeKeyInfo.getIvKey())){
-                    pressedKeyInfoList.remove(i);
-                    setPressed(pressdeKeyInfo.getIvKey(), false);
-
+        List<Touch> touches = TouchManager.toTouch(event);
+        if (touches.size() > 0) {
+            Touch firstTouch = touches.get(0);
+            if (firstTouch.getAction() == ACTION_DOWN || firstTouch.getAction() == ACTION_POINTER_DOWN) {
+                ImageView pressedKey = findPressedKey(firstTouch);
+                if (pressedKey != null && !contantKeyInfoWith(pressedKey)) {
+                    pressedKeyInfoList.add(new PressdeKeyInfo(pressedKey, firstTouch.getId()));
+                    setPressed(pressedKey, true);
+                    // TODO: Play a note
+                    SoundManager.playSound(pressedKey.getTag().toString());
                 }
-            }
-        }
-
-        ImageView pressedKey = findPressedKey(pointerX, pointerY);
-        if( pressedKey != null){
-            if(pointerAction == MotionEvent.ACTION_DOWN || pointerAction == MotionEvent.ACTION_POINTER_DOWN ||
-                    pointerAction == MotionEvent.ACTION_MOVE){
-                pressedKeyInfoList.add(new PressdeKeyInfo(pressedKey, pointerId));
-                setPressed(pressedKey, true);
-            }
-        }
-
-        if( pressedKey != null){
-            if(pointerAction == MotionEvent.ACTION_UP || pointerAction == MotionEvent.ACTION_POINTER_UP){
-                for(int i = 0 ; i < pressedKeyInfoList.size(); i++){
-                    PressdeKeyInfo pressdeKeyInfo = pressedKeyInfoList.get(i);
-                    if(pressdeKeyInfo.getPointerId() == pointerId ){
-                        pressedKeyInfoList.remove(i);
+            } else if (firstTouch.getAction() == ACTION_UP || firstTouch.getAction() == ACTION_POINTER_UP) {
+                Iterator<PressdeKeyInfo> keyInfoIterator = pressedKeyInfoList.iterator();
+                while (keyInfoIterator.hasNext()){
+                    PressdeKeyInfo pressdeKeyInfo = keyInfoIterator.next();
+                    if(firstTouch.getId() == pressdeKeyInfo.getPointerId()){
+                        keyInfoIterator.remove();
+                        setPressed(pressdeKeyInfo.getIvKey(), false);
                     }
-                    setPressed(pressedKey, false);
                 }
+
+            } else if (firstTouch.getAction() == ACTION_MOVE) {
+                for (Touch touch : touches) {
+                    ImageView pressedKey = findPressedKey(touch);
+                    if (pressedKey != null && !contantKeyInfoWith(pressedKey)) {
+                        pressedKeyInfoList.add(new PressdeKeyInfo(pressedKey, touch.getId()));
+                        setPressed(pressedKey, true);
+                        // TODO: Play a note
+                        SoundManager.playSound(pressedKey.getTag().toString());
+                    }
+                    Iterator<PressdeKeyInfo> infoIterator = pressedKeyInfoList.iterator();
+                    while ( infoIterator.hasNext()){
+                        PressdeKeyInfo pressdeKeyInfo = infoIterator.next();
+                        ImageView ivKey = pressdeKeyInfo.getIvKey();
+                        if (touch.getId() == pressdeKeyInfo.getPointerId() &&
+                                !touch.isInside(ivKey)) {
+                            infoIterator.remove();
+                            setPressed(ivKey, false);
+
+                        }
+                    }
+
+                }
+
             }
+
+
         }
-
-
-        Log.d(TAG, String.format("onTouchEvent: %s", pointerindex));
-
-
-//        if(pointerX > ivBlackKey1.getLeft() && pointerX < ivBlackKey1.getRight()&&
-//                pointerY >ivBlackKey1.getTop() && pointerY  < ivBlackKey1.getBottom()){
-//            Log.d(TAG, "onTounch : black 1");
-//        }
         return super.onTouchEvent(event);
     }
     private boolean contantKeyInfoWith(ImageView ivKey) {
         for (PressdeKeyInfo pressdeKeyInfo : pressedKeyInfoList) {
-            //    if(pressdeKeyInfo.getIvKey())
-        }
-        return true;
-    }
-
-    private ImageView findPressedKey( float pointerX, float pointerY){
-        for(ImageView ivBlackKey : ivKeys){
-            if(isInside(pointerX, pointerY,ivBlackKey)){
-                return ivBlackKey;
+            if(pressdeKeyInfo.getIvKey() == ivKey){
+                return true;
             }
         }
+        return false;
+    }
 
+    private ImageView findPressedKey( Touch touch){
+        for(ImageView ivKey : ivKeys){
+            if(touch.isInside(ivKey)){
+                return ivKey;
+            }
+        }
         return null;
     }
-    private boolean isInside( float x, float y , View v){
-        int [] location = new int [2];
-        v.getLocationOnScreen(location);
 
-        int left = location[0];
-        int top = location[1];
-        int right = left + v.getWidth();
-        int bottom = top + v.getHeight();
-        return x > left && x < right && y > top && y < bottom;
-    }
     private void setPressed( ImageView vKey, boolean isPressed){
         if(isPressed){
             if(ivKeys.contains(vKey)) vKey.setImageResource(R.drawable.key_red);
